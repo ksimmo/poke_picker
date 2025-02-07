@@ -159,7 +159,7 @@
       <string>Unload</string>
      </property>
     </widget>
-    <widget class="QLabel" name="ui_label_device_2">
+    <widget class="QLabel" name="ui_label_ppath">
      <property name="geometry">
       <rect>
        <x>10</x>
@@ -172,7 +172,7 @@
       <string>Save path:</string>
      </property>
     </widget>
-    <widget class="QLineEdit" name="ui_edit_vpath_2">
+    <widget class="QLineEdit" name="ui_edit_ppath">
      <property name="geometry">
       <rect>
        <x>90</x>
@@ -181,8 +181,11 @@
        <height>31</height>
       </rect>
      </property>
+     <property name="text">
+      <string>/home/user/test_pokes.json</string>
+     </property>
     </widget>
-    <widget class="QLabel" name="ui_label_device_3">
+    <widget class="QLabel" name="ui_label_vpath">
      <property name="geometry">
       <rect>
        <x>10</x>
@@ -260,64 +263,6 @@
       <string>Clear All</string>
      </property>
     </widget>
-    <widget class="QLabel" name="ui_label_range">
-     <property name="geometry">
-      <rect>
-       <x>10</x>
-       <y>120</y>
-       <width>66</width>
-       <height>21</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>Range:</string>
-     </property>
-    </widget>
-    <widget class="QLineEdit" name="ui_edit_range_start">
-     <property name="geometry">
-      <rect>
-       <x>70</x>
-       <y>110</y>
-       <width>71</width>
-       <height>31</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>0</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
-     </property>
-    </widget>
-    <widget class="QLineEdit" name="ui_edit_range_end">
-     <property name="geometry">
-      <rect>
-       <x>160</x>
-       <y>110</y>
-       <width>71</width>
-       <height>31</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>-1</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
-     </property>
-    </widget>
-    <widget class="QPushButton" name="ui_button_set_range">
-     <property name="geometry">
-      <rect>
-       <x>250</x>
-       <y>110</y>
-       <width>91</width>
-       <height>31</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>Set Range</string>
-     </property>
-    </widget>
     <widget class="QCheckBox" name="ui_checkbox_rel_flow">
      <property name="geometry">
       <rect>
@@ -329,6 +274,35 @@
      </property>
      <property name="text">
       <string>Relative Flow</string>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="ui_edit_chunk_size">
+     <property name="geometry">
+      <rect>
+       <x>650</x>
+       <y>160</y>
+       <width>51</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>-1</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
+     </property>
+    </widget>
+    <widget class="QLabel" name="ui_label_chunk_size">
+     <property name="geometry">
+      <rect>
+       <x>570</x>
+       <y>170</y>
+       <width>71</width>
+       <height>21</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Chunk Size</string>
      </property>
     </widget>
    </widget>
@@ -464,6 +438,19 @@
     </property>
     <property name="text">
      <string>Zoom</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="ui_label_pos">
+    <property name="geometry">
+     <rect>
+      <x>1430</x>
+      <y>1040</y>
+      <width>111</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>[PosX, PosY]</string>
     </property>
    </widget>
   </widget>

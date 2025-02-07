@@ -3,12 +3,15 @@ import os
 import time
 
 from copy import deepcopy
+import json
 
 from PyQt6 import QtWidgets
 from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
 from PyQt6.QtCore import *
 from PyQt6 import uic
+
+import numpy as np
 
 import torch
 #from torchcodec.decoders import VideoDecoder
@@ -19,7 +22,27 @@ from torchvision.models.optical_flow import raft_large
 from torchvision.utils import flow_to_image
 
 from src.utils.log import Logger
-#from src.worker.main_thread import MainThread
+
+class InputPadder:
+    """ Pads images such that dimensions are divisible by 8 """
+
+    def __init__(self, dims, mode='sintel', padding_factor=8):
+        self.ht, self.wd = dims[-2:]
+        pad_ht = (((self.ht // padding_factor) + 1) * padding_factor - self.ht) % padding_factor
+        pad_wd = (((self.wd // padding_factor) + 1) * padding_factor - self.wd) % padding_factor
+        if mode == 'sintel':
+            self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, pad_ht // 2, pad_ht - pad_ht // 2]
+        else:
+            self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, 0, pad_ht]
+
+    def pad(self, *inputs):
+        return [F.pad(x, self._pad, mode='replicate') for x in inputs]
+
+    def unpad(self, x):
+        ht, wd = x.shape[-2:]
+        c = [self._pad[2], ht - self._pad[3], self._pad[0], wd - self._pad[1]]
+        return x[..., c[0]:c[1], c[2]:c[3]]
+
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, *args, **kwargs):
@@ -41,6 +64,8 @@ class MainWindow(QtWidgets.QMainWindow):
         #setup widgets
         self.ui_label_video.linkSliders(self.ui_slider_shiftx, self.ui_slider_shifty, self.ui_slider_zoom, control_sliders=True)
         self.ui_label_flow.linkSliders(self.ui_slider_shiftx, self.ui_slider_shifty, self.ui_slider_zoom)
+        self.ui_label_flow.poke_color = np.array([0,0,0], dtype=np.uint8)
+
         self.ui_slider_t.setRange(0,0)
         self.ui_slider_shiftx.setEnabled(False)
         self.ui_slider_shifty.setEnabled(False)
@@ -57,20 +82,24 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui_button_pclear.clicked.connect(self.OnPokeButtonClear)
         self.ui_button_pclear_all.clicked.connect(self.OnPokeButtonClearAll)
 
-        self.ui_edit_range_start.editingFinished.connect(self.OnRangeEditStart)
-        self.ui_edit_range_end.editingFinished.connect(self.OnRangeEditEnd)
-        self.ui_button_set_range.clicked.connect(self.OnButtonSetRange)
         self.ui_button_calc.clicked.connect(self.OnVideoCalculate)
         self.ui_button_next_t.clicked.connect(self.OnNextFrame)
         self.ui_button_set_t.clicked.connect(self.OnSetFrame)
+        self.ui_slider_t.sliderReleased.connect(self.OnSliderT)
+
+        self.ui_label_video.moved.connect(self.OnMouseMove)
+        self.ui_label_flow.moved.connect(self.OnMouseMove)
+        self.ui_label_video.clicked.connect(self.OnMouseClicked)
+        self.ui_label_video.clicked.connect(self.ui_label_flow.changePokes)
+        self.ui_label_flow.clicked.connect(self.OnMouseClicked)
+        self.ui_label_flow.clicked.connect(self.ui_label_video.changePokes)
 
         #stuff for handling video
         self.video_metadata = None
         self.video = None
-        self.video_start = 0
-        self.video_end = -1
         self.current_frame_index = 0
         self.flow = None
+        self.pokes = []
 
         #RAFT for flow estimation
         self.raft_model = raft_large(pretrained=True)
@@ -122,12 +151,14 @@ class MainWindow(QtWidgets.QMainWindow):
                                                                                    self.video.size(-2), self.video.size(-1)))
                 del vr
 
-                #adjust range
-                self.ui_edit_range_end.setText("{}".format(self.video_metadata["num_frames"]))
-                self.video_end = self.video_metadata["num_frames"]
+                #add pokes
+                for i in range(self.video_metadata["num_frames"]-1): #last frame does not have a flow to pick pokes from
+                    self.pokes.append([]) #add an empty set pokes per frame
+
                 self.ui_button_set_t.setEnabled(True)
                 self.ui_button_next_t.setEnabled(True)
-                self.ui_slider_t.setRange(0,self.video_metadata["num_frames"]-1)
+                self.ui_slider_t.setRange(0,self.video_metadata["num_frames"]-2) #last frame has no poke and indices start from 0
+                #TODO: set slider t to 0
                 self.ui_slider_t.setEnabled(True)
                 self.ui_slider_zoom.setEnabled(True)
                 self.SetCurrentFrame()
@@ -144,27 +175,35 @@ class MainWindow(QtWidgets.QMainWindow):
     def OnVideoButtonUnload(self):
         self.video_metadata = None
         self.video = None
-        self.video_start = 0
-        self.video_end = -1
         self.current_frame_index = 0
         self.flow = None
+        self.pokes = []
 
         #reset widgets
-        self.ui_edit_range_start.setText("0")
-        self.ui_edit_range_end.setText("-1")
 
-        self.ui_slider_t.setEnabled(False)
+        self.ui_edit_t.blockSignals(True)
+        self.ui_edit_t.setText("0")
+        self.ui_edit_t.blockSignals(False)
         self.ui_button_set_t.setEnabled(False)
         self.ui_button_next_t.setEnabled(False)
+
+        self.ui_slider_t.blockSignals(True)
+        self.ui_slider_t.setValue(0)
         self.ui_slider_t.setRange(0,0)
+        self.ui_slider_t.blockSignals(False)
+        self.ui_slider_t.setEnabled(False)
 
         self.ui_slider_shiftx.blockSignals(True)
         self.ui_slider_shiftx.setValue(0)
+        self.ui_slider_shiftx.setRange(0,0)
         self.ui_slider_shiftx.blockSignals(False)
+        #disabling is done via pixelmap
 
         self.ui_slider_shifty.blockSignals(True)
         self.ui_slider_shifty.setValue(0)
+        self.ui_slider_shifty.setRange(0,0)
         self.ui_slider_shifty.blockSignals(False)
+        #disabling is done via pixelmap
 
         self.ui_slider_zoom.blockSignals(True)
         self.ui_slider_zoom.setValue(1)
@@ -185,51 +224,79 @@ class MainWindow(QtWidgets.QMainWindow):
     def OnPokeButtonSave(self):
         path = self.ui_edit_ppath.text()
 
+        if not path.endswith(".json"):
+            self.log("File for saving pokes needs to be a JSON (.json) file!", 1)
+            return
+
+        #write pokes to file
+        try:
+            f = open(path, "w")
+            pokes = []
+            for i in range(len(self.pokes)):
+                pokes.append([])
+                for j in range(len(self.pokes[i])):
+                    pokes[i].append(self.pokes[i][j].tolist())
+            json.dump(pokes, f)
+            f.close()
+            self.log("Successfully saved pokes to {}".format(path))
+        except Exception as e:
+            self.log("Failed saving pokes to {}".format(path), 1)
+            self.log(str(e), 1)
+
     def OnPokeButtonLoad(self):
         path = self.ui_edit_ppath.text()
 
+        if not path.endswith(".json"):
+            self.log("File for loading pokes needs to be a JSON (.json) file!", 1)
+            return
+
+        #load pokes from file
+        try:
+            f = open(path, "r")
+            pokes = json.load(f)
+            self.pokes = []
+            for i in range(len(pokes)):
+                self.pokes.append([])
+                for j in range(len(pokes[i])):
+                    self.pokes[i].append(np.array(pokes[i][j]))
+            f.close()
+            self.log("Successfully loaded pokes from {}".format(path))
+        except Exception as e:
+            self.log("Failed loading pokes from {}".format(path), 1)
+            self.log(str(e), 1)
+            
+            #reset pokes
+            for i in range(self.video_metadata["num_frames"]-1):
+                self.pokes.append([]) #add an empty set pokes per frame
+        
+        if len(self.pokes)<self.video_metadata["num_frames"]-1:
+            missing = self.video_metadata["num_frames"]-1-len(self.pokes)
+            for i in range(missing):
+                self.pokes.append([])
+            self.log("Loaded pokes are too short! Appending empty poke sets.", 1)
+        elif len(self.pokes)>self.video_metadata["num_frames"]-1:
+            missing = len(self.pokes)-self.video_metadata["num_frames"]-1
+            for i in reversed(range(missing)):
+                del self.pokes[-1]
+            self.log("Loaded pokes are too long! Removing additional poke sets.", 1)
+
+        self.ui_label_video.updatePokes(self.pokes[self.current_frame_index])
+        self.ui_label_flow.updatePokes(self.pokes[self.current_frame_index])
+
     def OnPokeButtonClear(self):
-        pass
+        self.pokes[self.current_frame_index] = []
+        self.ui_label_video.updatePokes()
+        self.ui_label_flow.updatePokes()
+        self.log("Clearing current frame pokes ...")
     
     def OnPokeButtonClearAll(self):
-        pass
+        for i in range(len(self.pokes)):
+            self.pokes[i] = []
+        self.ui_label_video.updatePokes()
+        self.ui_label_flow.updatePokes()
+        self.log("Clearing all pokes ...")
 
     ###########################
-    def OnRangeEditStart(self):
-        if self.video is None:
-            self.ui_edit_range_start.setText("0")
-        else:
-            text = self.ui_edit_range_start.text()
-            number = int(text)
-            if number>self.video.size(0)-1:
-                self.log_err("Video only has {} frames!".format(self.video_metadata["num_frames"]))
-                self.ui_edit_range_start.setText("0")
-
-    def OnRangeEditEnd(self):
-        if self.video is None:
-            self.ui_edit_range_end.setText("0")
-        else:
-            text = self.ui_edit_range_end.text()
-            number = int(text)
-            if number>self.video.size(0):
-                self.log_err("Video only has {} frames!".format(self.video_metadata["num_frames"]))
-                self.ui_edit_range_end.setText("0")
-
-    def OnButtonSetRange(self):
-        if self.video is not None:
-            start = self.ui_edit_range_start.text()
-            end = self.ui_edit_range_end.text()
-            start = int(start)
-            end = int(end)
-            self.video_start = start
-            self.video_end = end if end==-1 else self.video.size(0)
-
-            self.log("Setting range to [{}:{}]! This will influence already set pokes!".format(start, end))
-
-            self.ui_slider_t.setEnabled(False)
-            self.ui_slider_t.setRange(0,self.video_end-self.video_start-1)
-            self.ui_slider_t.setEnabled(True)
-
     def OnVideoCalculate(self):
         if self.video is None:
             return
@@ -238,46 +305,111 @@ class MainWindow(QtWidgets.QMainWindow):
         device = torch.device(device)
 
         rel_flow = self.ui_checkbox_rel_flow.isChecked()
+        text = self.ui_edit_chunk_size.text()
+        chunk_size = int(text)
 
         self.setEnabled(False)
-        start = time.time()
+        start_time = time.time()
         self.raft_model = self.raft_model.to(device)
-        clip = self.video[self.video_start:self.video_end].to(device)
-        clip = (clip.float()/255.0-0.5)/0.5 #map to [-1,1]
-        flow = self.raft_model(clip[0:-1], clip[1:])[-1] if rel_flow else self.raft_model(clip[0:1].repeat(clip.size(0)-1,1,1,1), clip[1:])[-1]
-        self.flow = flow.cpu()
+
+        flows = []
+        if rel_flow:
+            start_frame = self.video[0:1].to(device)
+            start_frame = (start_frame.float()/255.0-0.5)/0.5 #map to [-1,1]
+        chunk_size = self.video.size(0) if chunk_size<=0 else chunk_size #we are measuring in flow frames!
+        num_chunks = int(np.ceil(self.video.size(0)/chunk_size))
+        for i in range(num_chunks):
+            start = i*chunk_size
+            end = min(self.video.size(0), (i+1)*chunk_size+1)
+            if end-start==1: #for last frame no flow exists anyways
+                break
+            clip = self.video[start:end].to(device)
+            clip = (clip.float()/255.0-0.5)/0.5 #map to [-1,1]
+            flow = self.raft_model(clip[0:-1], clip[1:])[-1] if not rel_flow else self.raft_model(start_frame.repeat(clip.size(0)-1,1,1,1), clip)[-1]
+            flows.append(flow.cpu())
+        self.flow = torch.cat(flows, dim=0)
+        if rel_flow:
+            self.flow = self.flow[1:] #remove first flow frame as it will be just 0
+            del start_frame
         del clip
-        end = time.time()
+
+        end_time = time.time()
         self.setEnabled(True)
 
-        self.log("Flow calculated (time taken: {:.3f}s)!".format(end-start))
+        self.log("Flow calculated (time taken: {:.3f}s)!".format(end_time-start_time))
 
         self.SetCurrentFrame()
 
     def OnNextFrame(self):
+        if self.current_frame_index+1<self.video.size(0)-1:
+            next_frame = self.current_frame_index+1
+        else:
+            next_frame = 0 #start again from first frame
         #get current postion
         self.ui_slider_t.blockSignals(True)
-        self.ui_slider_t.setValue(index)
+        self.ui_slider_t.setValue(next_frame)
         self.ui_slider_t.blockSignals(False)
+
+        self.current_frame_index = next_frame
+        self.SetCurrentFrame() #update slider
 
     def OnSetFrame(self):
         path = self.ui_edit_t.text()
+        if not path.isnumeric():
+            self.log("Frame index is not numeric!", 1)
+            return
+        
         index = int(path)
-        if index<0 or index>=(self.video_end-self.video_start):
-            self.log_err("Cannot set frame due to wrong length!")
+        if index<0 or index>=self.video.size(0)-1:
+            self.log("Cannot set frame due to wrong length!",1)
             return
 
         self.ui_slider_t.blockSignals(True)
         self.ui_slider_t.setValue(index)
         self.ui_slider_t.blockSignals(False)
 
+        self.current_frame_index = index
+        self.SetCurrentFrame() #update slider
+
+    def OnSliderT(self):
+        val = self.ui_slider_t.value()
+
+        self.current_frame_index = val
+        self.SetCurrentFrame()
+
     def SetCurrentFrame(self):
         if self.video is not None:
             #get current index
             frame = self.video[self.current_frame_index]
-            self.ui_label_video.setImage(torch.movedim(frame, 0, 2).numpy())
+            self.ui_label_video.setImage(torch.movedim(frame, 0, 2).numpy(), self.pokes[self.current_frame_index])
 
             if self.flow is not None:
                 flow = self.flow[self.current_frame_index]
                 flow = flow_to_image(flow.unsqueeze(0).squeeze(0))
-                self.ui_label_flow.setImage(torch.movedim(flow, 0, 2).numpy())
+                self.ui_label_flow.setImage(torch.movedim(flow, 0, 2).numpy(), self.pokes[self.current_frame_index])
+
+
+    def OnMouseMove(self, x, y):
+        self.ui_label_pos.setText("[{},{}]".format(x,y))
+
+    def OnMouseClicked(self, x, y, action):
+        found = False
+        found_index = -1
+        for i in range(len(self.pokes[self.current_frame_index])):
+            if self.pokes[self.current_frame_index][i][0]==x and self.pokes[self.current_frame_index][i][1]==y:
+                found = True
+                found_index = i
+                break
+
+        if not found and action==1:
+            self.log("Adding poke at x={} y={}".format(x, y))
+            if self.flow is None:
+                self.pokes[self.current_frame_index].append(np.array([x,y,0,0], dtype=int))
+            else:
+                flowx = int(self.flow[self.current_frame_index,0,y,x].item())
+                flowy = int(self.flow[self.current_frame_index,1,y,x].item())
+                self.pokes[self.current_frame_index].append(np.array([x,y,x+flowx,y+flowy], dtype=int))
+        elif found and action==0:
+            del self.pokes[self.current_frame_index][found_index]
+            self.log("Removing poke at x={} y={}".format(x, y))
+
