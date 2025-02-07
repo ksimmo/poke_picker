@@ -34,9 +34,9 @@
     <property name="geometry">
      <rect>
       <x>0</x>
-      <y>1090</y>
+      <y>1100</y>
       <width>951</width>
-      <height>341</height>
+      <height>331</height>
      </rect>
     </property>
     <property name="readOnly">
@@ -59,7 +59,7 @@
      <string/>
     </property>
    </widget>
-   <widget class="QGroupBox" name="groupBox">
+   <widget class="QGroupBox" name="ui_group_control">
     <property name="geometry">
      <rect>
       <x>1320</x>
@@ -452,6 +452,101 @@
     <property name="text">
      <string>[PosX, PosY]</string>
     </property>
+   </widget>
+   <widget class="QGroupBox" name="ui_group_pokes">
+    <property name="geometry">
+     <rect>
+      <x>960</x>
+      <y>1080</y>
+      <width>351</width>
+      <height>351</height>
+     </rect>
+    </property>
+    <property name="title">
+     <string>Pokes</string>
+    </property>
+    <widget class="QComboBox" name="ui_combo_poke">
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>50</y>
+       <width>321</width>
+       <height>51</height>
+      </rect>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="ui_button_poke_delete">
+     <property name="geometry">
+      <rect>
+       <x>120</x>
+       <y>120</y>
+       <width>101</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Delete</string>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="ui_edit_poke1">
+     <property name="geometry">
+      <rect>
+       <x>80</x>
+       <y>180</y>
+       <width>71</width>
+       <height>31</height>
+      </rect>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="ui_edit_poke2">
+     <property name="geometry">
+      <rect>
+       <x>200</x>
+       <y>180</y>
+       <width>71</width>
+       <height>31</height>
+      </rect>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="ui_button_poke_add">
+     <property name="geometry">
+      <rect>
+       <x>120</x>
+       <y>240</y>
+       <width>101</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Add</string>
+     </property>
+    </widget>
+    <widget class="QLabel" name="ui_label_pos_x">
+     <property name="geometry">
+      <rect>
+       <x>50</x>
+       <y>180</y>
+       <width>20</width>
+       <height>21</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>X</string>
+     </property>
+    </widget>
+    <widget class="QLabel" name="ui_label_pos_y">
+     <property name="geometry">
+      <rect>
+       <x>170</x>
+       <y>190</y>
+       <width>20</width>
+       <height>21</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Y</string>
+     </property>
+    </widget>
    </widget>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>

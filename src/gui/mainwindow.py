@@ -82,6 +82,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui_button_pclear.clicked.connect(self.OnPokeButtonClear)
         self.ui_button_pclear_all.clicked.connect(self.OnPokeButtonClearAll)
 
+        self.ui_button_poke_add.clicked.connect(self.OnPokeButtonAdd)
+        self.ui_button_poke_delete.clicked.connect(self.OnPokeButtonDelete)
+
         self.ui_button_calc.clicked.connect(self.OnVideoCalculate)
         self.ui_button_next_t.clicked.connect(self.OnNextFrame)
         self.ui_button_set_t.clicked.connect(self.OnSetFrame)
@@ -165,7 +168,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             except Exception as e:
                 self.log("Cannot load video!", 1)
-                self.log(str(e), 1)
+                print(e)
 
                 self.video = None
                 self.video_metadata = None
@@ -213,6 +216,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui_label_video.empty()
         self.ui_label_flow.empty()
 
+        self.ui_combo_poke.clear()
+        self.ui_edit_poke1.setText("")
+        self.ui_edit_poke2.setText("")
+
         self.log("Current video unloaded!")
 
 
@@ -241,7 +248,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.log("Successfully saved pokes to {}".format(path))
         except Exception as e:
             self.log("Failed saving pokes to {}".format(path), 1)
-            self.log(str(e), 1)
+            print(e)
 
     def OnPokeButtonLoad(self):
         path = self.ui_edit_ppath.text()
@@ -259,11 +266,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.pokes.append([])
                 for j in range(len(pokes[i])):
                     self.pokes[i].append(np.array(pokes[i][j]))
+                    if i==self.current_frame_index:
+                        self.ui_combo_poke.addItem("[{},{},{},{}]".format(pokes[i][j][0],pokes[i][j][1],pokes[i][j][2],pokes[i][j][3]))
             f.close()
             self.log("Successfully loaded pokes from {}".format(path))
         except Exception as e:
             self.log("Failed loading pokes from {}".format(path), 1)
-            self.log(str(e), 1)
+            print(e)
             
             #reset pokes
             for i in range(self.video_metadata["num_frames"]-1):
@@ -287,6 +296,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pokes[self.current_frame_index] = []
         self.ui_label_video.updatePokes()
         self.ui_label_flow.updatePokes()
+        self.ui_combo_poke.clear()
         self.log("Clearing current frame pokes ...")
     
     def OnPokeButtonClearAll(self):
@@ -294,6 +304,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.pokes[i] = []
         self.ui_label_video.updatePokes()
         self.ui_label_flow.updatePokes()
+        self.ui_combo_poke.clear()
         self.log("Clearing all pokes ...")
 
     ###########################
@@ -388,6 +399,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 flow = flow_to_image(flow.unsqueeze(0).squeeze(0))
                 self.ui_label_flow.setImage(torch.movedim(flow, 0, 2).numpy(), self.pokes[self.current_frame_index])
 
+            #add pokes to combobox
+            self.ui_edit_poke1.setText("")
+            self.ui_edit_poke2.setText("")
+            self.ui_combo_poke.clear()
+            for i in range(len(self.pokes[self.current_frame_index])):
+                p = self.pokes[self.current_frame_index][i]
+                self.ui_combo_poke.addItem("[{},{},{},{}]".format(p[0],p[1],p[2],p[3]))
+
 
     def OnMouseMove(self, x, y):
         self.ui_label_pos.setText("[{},{}]".format(x,y))
@@ -409,7 +428,53 @@ class MainWindow(QtWidgets.QMainWindow):
                 flowx = int(self.flow[self.current_frame_index,0,y,x].item())
                 flowy = int(self.flow[self.current_frame_index,1,y,x].item())
                 self.pokes[self.current_frame_index].append(np.array([x,y,x+flowx,y+flowy], dtype=int))
+            pokes = self.pokes[self.current_frame_index][-1]
+            self.ui_combo_poke.addItem("[{},{},{},{}]".format(pokes[0], pokes[1], pokes[2], pokes[3]))
         elif found and action==0:
             del self.pokes[self.current_frame_index][found_index]
+            self.ui_combo_poke.removeItem(found_index)
             self.log("Removing poke at x={} y={}".format(x, y))
+
+    def OnPokeButtonAdd(self):
+        text1 = self.ui_edit_poke1.text()
+        text2 = self.ui_edit_poke2.text()
+
+        if not text1.isnumeric():
+            self.log("Start position X is not numeric!", 1)
+            return
+        if not text2.isnumeric():
+            self.log("Start position Y is not numeric!", 1)
+            return
+        
+        pos1 = int(text1)
+        pos2 = int(text2)
+
+        if pos1<0 and pos1>self.video.size(-1):
+            self.log("Start position X is out of bound!", 1)
+            return
+        if pos2<0 and pos2>self.video.size(-2):
+            self.log("Start position Y is out of bound!", 1)
+            return
+        
+        self.ui_label_video.pokes.append(np.array([pos1,pos2], dtype=int))
+        self.ui_label_video.updateCanvas()
+        self.ui_label_flow.pokes.append(np.array([pos1,pos2], dtype=int))
+        self.ui_label_flow.updateCanvas()
+        self.OnMouseClicked(pos1,pos2,1)   
+
+    def OnPokeButtonDelete(self):
+        index = self.ui_combo_poke.currentIndex()
+        text = self.ui_combo_poke.currentText()[1:] #remove [
+        print(index, text)
+
+        pos1 = text.find(",")
+        x = int(text[:pos1])
+        pos2 = text.find(",", pos1+1)
+        y = int(text[pos1+1:pos2])
+
+        del self.ui_label_video.pokes[index]
+        self.ui_label_video.updateCanvas()
+        del self.ui_label_flow.pokes[index]
+        self.ui_label_flow.updateCanvas()
+        self.OnMouseClicked(x,y,0) 
 
