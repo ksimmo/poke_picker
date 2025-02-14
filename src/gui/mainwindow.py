@@ -95,9 +95,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui_label_video.moved.connect(self.OnMouseMove)
         self.ui_label_flow.moved.connect(self.OnMouseMove)
         self.ui_label_video.clicked.connect(self.OnMouseClicked)
-        self.ui_label_video.clicked.connect(self.ui_label_flow.changePokes)
+        #self.ui_label_video.clicked.connect(self.ui_label_flow.changePokes)
         self.ui_label_flow.clicked.connect(self.OnMouseClicked)
-        self.ui_label_flow.clicked.connect(self.ui_label_video.changePokes)
+        #self.ui_label_flow.clicked.connect(self.ui_label_video.changePokes)
 
         #stuff for handling video
         self.video_metadata = None
@@ -466,6 +466,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ui_combo_poke.removeItem(found_index)
             self.log("Removing poke at x={} y={}".format(x, y))
 
+        self.ui_label_video.updatePokes(self.pokes[self.current_frame_index])
+        self.ui_label_flow.updatePokes(self.pokes[self.current_frame_index])
+
     def OnPokeButtonAdd(self):
         text1 = self.ui_edit_poke1.text()
         text2 = self.ui_edit_poke2.text()
@@ -494,18 +497,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.OnMouseClicked(pos1,pos2,1)   
 
     def OnPokeButtonDelete(self):
-        index = self.ui_combo_poke.currentIndex()
-        text = self.ui_combo_poke.currentText()[1:] #remove [
-        print(index, text)
+        if self.ui_combo_poke.count()>0:
+            index = self.ui_combo_poke.currentIndex()
+            text = self.ui_combo_poke.currentText()[1:-1] #remove []
 
-        pos1 = text.find(",")
-        x = int(text[:pos1])
-        pos2 = text.find(",", pos1+1)
-        y = int(text[pos1+1:pos2])
-
-        del self.ui_label_video.pokes[index]
-        self.ui_label_video.updateCanvas()
-        del self.ui_label_flow.pokes[index]
-        self.ui_label_flow.updateCanvas()
-        self.OnMouseClicked(x,y,0) 
+            pos1 = text.find(",")
+            x = int(text[:pos1])
+            pos2 = text.find(",", pos1+1)
+            y = int(text[pos1+1:pos2])
+            
+            self.OnMouseClicked(x,y,0) 
 

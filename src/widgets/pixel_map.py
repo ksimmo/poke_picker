@@ -5,7 +5,7 @@ from PyQt6.QtCore import *
 
 import numpy as np
 from skimage.transform import resize
-from skimage import color
+from PIL import Image, ImageDraw
 
 
 class Pixelmap(QLabel):
@@ -26,6 +26,7 @@ class Pixelmap(QLabel):
 
         self.pokes = []
         self.poke_color = np.array([255,0,255], dtype=np.uint8)
+        self.arrow_lw = 1
 
         #self.geometry().height() -> currently we now that it is fixed to 1024
         self.image = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom),3), dtype=np.uint8) #HxWxC
@@ -69,9 +70,8 @@ class Pixelmap(QLabel):
     def updateCanvas(self):
         img = self.image.astype(np.uint8)
 
-        #draw annotations onto image
         for i in range(len(self.pokes)):
-            img[self.pokes[i][1], self.pokes[i][0]] = self.poke_color
+            img[int(self.pokes[i][1]), int(self.pokes[i][0])] = self.poke_color #image has y first and then x
 
         val = 1.0
         if self.slider_zoom is not None:
@@ -92,6 +92,37 @@ class Pixelmap(QLabel):
 
         #resize image
         img = resize(img, (img.shape[0]*fac, img.shape[1]*fac), order=0, preserve_range=True, anti_aliasing=False)
+
+        #draw arrow
+        img = Image.fromarray(img)
+        draw = ImageDraw.Draw(img)
+        col = "#{:02x}{:02x}{:02x}".format(*self.poke_color)
+        for i in range(len(self.pokes)):
+            startx = int(self.pokes[i][0]*fac)
+            starty = int(self.pokes[i][1]*fac)
+            endx = int(self.pokes[i][2]*fac)
+            endy = int(self.pokes[i][3]*fac)
+
+            draw.line(((startx, starty), (endx, endy)), width=self.arrow_lw, fill=col)
+
+            v = np.array([endx-startx, endy-starty])
+            vlength = np.sqrt(np.sum(v**2))
+            if vlength==0:
+                continue
+
+            arrow_head_height = min(vlength*0.2, 4) #arrow head height is at max 4 pixels
+            arrow_head_intersect = -v/vlength*arrow_head_height+np.array([endx,endy])
+
+            #find perpendicular vector
+            normal = np.array([-v[1], v[0]])
+            normal_length = np.sqrt(np.sum(normal**2))
+
+            p1 = (arrow_head_intersect+normal/normal_length*arrow_head_height).astype(int)
+            p2 = (arrow_head_intersect-normal/normal_length*arrow_head_height).astype(int)
+            
+            draw.polygon([(p1[0],p1[1]),(p2[0], p2[1]), (endx, endy)], fill=col) #draw arrow head
+
+        img = np.array(img)
 
         #pad image if necessary!!!
         if img.shape[0]<1024:
@@ -212,24 +243,7 @@ class Pixelmap(QLabel):
             #check if we are inside the image
             if self.clickable and x<self.image.shape[1] and y<self.image.shape[0]:
                 self.clicked.emit(x, y, action)
-                self.changePokes(x,y,action)
 
     def updatePokes(self, pokes: list=[]):
         self.pokes = pokes
-        self.updateCanvas()
-
-    def changePokes(self, x: int, y: int, action: int):
-        found = False
-        found_index = -1
-        for i in range(len(self.pokes)):
-            if self.pokes[i][0]==x and self.pokes[i][1]==y:
-                found = True
-                found_index = i
-                break
-
-        if not found and action==1:
-            self.pokes.append(np.array([x,y], dtype=int))
-        elif found and action==0:
-            del self.pokes[found_index]
-
         self.updateCanvas()
