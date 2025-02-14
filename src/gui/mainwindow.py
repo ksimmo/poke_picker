@@ -14,11 +14,12 @@ from PyQt6 import uic
 import numpy as np
 
 import torch
+import torch.nn.functional as F
 #from torchcodec.decoders import VideoDecoder
 #import decord
 #decord.bridge.set_bridge('torch')
 from torchvision.io import VideoReader
-from torchvision.models.optical_flow import raft_large
+from torchvision.models.optical_flow import raft_large, Raft_Large_Weights
 from torchvision.utils import flow_to_image
 
 from src.utils.log import Logger
@@ -26,7 +27,7 @@ from src.utils.log import Logger
 class InputPadder:
     """ Pads images such that dimensions are divisible by 8 """
 
-    def __init__(self, dims, mode='sintel', padding_factor=8):
+    def __init__(self, dims, mode: str='sintel', padding_factor: int=8):
         self.ht, self.wd = dims[-2:]
         pad_ht = (((self.ht // padding_factor) + 1) * padding_factor - self.ht) % padding_factor
         pad_wd = (((self.wd // padding_factor) + 1) * padding_factor - self.wd) % padding_factor
@@ -86,6 +87,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui_button_poke_delete.clicked.connect(self.OnPokeButtonDelete)
 
         self.ui_button_calc.clicked.connect(self.OnVideoCalculate)
+        self.ui_button_prev_t.clicked.connect(self.OnPrevFrame)
         self.ui_button_next_t.clicked.connect(self.OnNextFrame)
         self.ui_button_set_t.clicked.connect(self.OnSetFrame)
         self.ui_slider_t.sliderReleased.connect(self.OnSliderT)
@@ -105,12 +107,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pokes = []
 
         #RAFT for flow estimation
-        self.raft_model = raft_large(pretrained=True)
+        self.raft_model = raft_large(weights=Raft_Large_Weights.C_T_SKHT_V2)
         self.raft_model.eval()
         for param in self.raft_model.parameters():
             param.requires_grad = False
 
-    def log(self, text, status=0):
+    def log(self, text: str, status: int=0):
         if status==0:
             self.log_normal.write(text)
         elif status==1:
@@ -118,9 +120,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     #override
     def closeEvent(self, event):
-        #stop threads
-
-        # close other stuff
+        #close stuff here
+        #####
         QtWidgets.QMainWindow.closeEvent(self, event)
 
     #video loading
@@ -219,6 +220,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui_combo_poke.clear()
         self.ui_edit_poke1.setText("")
         self.ui_edit_poke2.setText("")
+
+        self.ui_label_flowmag.setText("0")
+        self.ui_label_pos.setText("[PosX,PosY]")
 
         self.log("Current video unloaded!")
 
@@ -322,11 +326,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setEnabled(False)
         start_time = time.time()
         self.raft_model = self.raft_model.to(device)
+        padder = InputPadder(self.video.size(), mode="sintel")
 
         flows = []
         if rel_flow:
             start_frame = self.video[0:1].to(device)
             start_frame = (start_frame.float()/255.0-0.5)/0.5 #map to [-1,1]
+            start_frame = padder.pad(start_frame)[0]
         chunk_size = self.video.size(0) if chunk_size<=0 else chunk_size #we are measuring in flow frames!
         num_chunks = int(np.ceil(self.video.size(0)/chunk_size))
         for i in range(num_chunks):
@@ -336,7 +342,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 break
             clip = self.video[start:end].to(device)
             clip = (clip.float()/255.0-0.5)/0.5 #map to [-1,1]
-            flow = self.raft_model(clip[0:-1], clip[1:])[-1] if not rel_flow else self.raft_model(start_frame.repeat(clip.size(0)-1,1,1,1), clip)[-1]
+            clip = padder.pad(clip)[0]
+            if not rel_flow:
+                flow = self.raft_model(clip[0:-1], clip[1:])[-1]
+            else:
+                flow = self.raft_model(start_frame.repeat(clip.size(0)-1,1,1,1), clip)[-1]
+            flow = padder.unpad(flow)
             flows.append(flow.cpu())
         self.flow = torch.cat(flows, dim=0)
         if rel_flow:
@@ -350,6 +361,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.log("Flow calculated (time taken: {:.3f}s)!".format(end_time-start_time))
 
         self.SetCurrentFrame()
+
+    def OnPrevFrame(self):
+        if self.current_frame_index-1>=0:
+            next_frame = self.current_frame_index-1
+        else:
+            next_frame = self.video.size(0)-1 #start again from last frame
+        #get current postion
+        self.ui_slider_t.blockSignals(True)
+        self.ui_slider_t.setValue(next_frame)
+        self.ui_slider_t.blockSignals(False)
+
+        self.current_frame_index = next_frame
+        self.SetCurrentFrame() #update slider
 
     def OnNextFrame(self):
         if self.current_frame_index+1<self.video.size(0)-1:
@@ -374,13 +398,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if index<0 or index>=self.video.size(0)-1:
             self.log("Cannot set frame due to wrong length!",1)
             return
+        
+        if index!=self.current_frame_index:
+            self.ui_slider_t.blockSignals(True)
+            self.ui_slider_t.setValue(index)
+            self.ui_slider_t.blockSignals(False)
 
-        self.ui_slider_t.blockSignals(True)
-        self.ui_slider_t.setValue(index)
-        self.ui_slider_t.blockSignals(False)
-
-        self.current_frame_index = index
-        self.SetCurrentFrame() #update slider
+            self.current_frame_index = index
+            self.SetCurrentFrame() #update slider
 
     def OnSliderT(self):
         val = self.ui_slider_t.value()
@@ -398,6 +423,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 flow = self.flow[self.current_frame_index]
                 flow = flow_to_image(flow.unsqueeze(0).squeeze(0))
                 self.ui_label_flow.setImage(torch.movedim(flow, 0, 2).numpy(), self.pokes[self.current_frame_index])
+                mag = torch.sqrt(torch.sum(torch.pow(flow, 2),dim=1)).numpy()
 
             #add pokes to combobox
             self.ui_edit_poke1.setText("")
@@ -408,10 +434,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ui_combo_poke.addItem("[{},{},{},{}]".format(p[0],p[1],p[2],p[3]))
 
 
-    def OnMouseMove(self, x, y):
+    def OnMouseMove(self, x: int, y: int):
         self.ui_label_pos.setText("[{},{}]".format(x,y))
+        if self.flow is not None:
+            if x>=0 and x<self.flow.size(-1) and y>=0 and y<self.flow.size(-2):
+                poke = self.flow[self.current_frame_index,:,y,x].numpy()
+                pokemag = np.sqrt(np.sum(poke**2))
+                self.ui_label_flowmag.setText("{}".format(int(pokemag)))
 
-    def OnMouseClicked(self, x, y, action):
+    def OnMouseClicked(self, x: int, y: int, action: int):
         found = False
         found_index = -1
         for i in range(len(self.pokes[self.current_frame_index])):

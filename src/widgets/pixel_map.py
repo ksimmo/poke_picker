@@ -13,7 +13,7 @@ class Pixelmap(QLabel):
     moved = pyqtSignal(int,int) #pixel position y,x
     clicked = pyqtSignal(int, int, int)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget=None):
         super().__init__()
         QLabel.__init__(self, parent)
         self.setMouseTracking(True) #track mouse movement even if no button is pressed
@@ -55,7 +55,7 @@ class Pixelmap(QLabel):
         self.image = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom),3), dtype=np.uint8) #HxWxC
         self.updateCanvas()
 
-    def setImage(self, image, pokes=None):
+    def setImage(self, image: np.ndarray, pokes: list=None):
         self.image = image
         self.inuse = True
 
@@ -109,7 +109,7 @@ class Pixelmap(QLabel):
 
     #connect sliders to widget (only 1 widget is allowed to also change sliders -> only set control_sliders true for 1 widget at the same time)
     #call this function in window constructor
-    def linkSliders(self, slider_shiftx=None, slider_shifty=None, slider_zoom=None, control_sliders=False):
+    def linkSliders(self, slider_shiftx: QWidget=None, slider_shifty: QWidget=None, slider_zoom: QWidget=None, control_sliders: bool=False):
         self.slider_shiftx = slider_shiftx
         self.slider_shifty = slider_shifty
         self.slider_zoom = slider_zoom
@@ -214,11 +214,11 @@ class Pixelmap(QLabel):
                 self.clicked.emit(x, y, action)
                 self.changePokes(x,y,action)
 
-    def updatePokes(self, pokes=[]):
+    def updatePokes(self, pokes: list=[]):
         self.pokes = pokes
         self.updateCanvas()
 
-    def changePokes(self, x, y, action):
+    def changePokes(self, x: int, y: int, action: int):
         found = False
         found_index = -1
         for i in range(len(self.pokes)):
